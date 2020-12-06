@@ -1,136 +1,107 @@
-function generate_year_range(start, end) {
-    var years = "";
-    for (var year = start; year <= end; year++) {
-        years += "<option value='" + year + "'>" + year + "</option>";
-    }
-    return years;
+const express = require("express");
+const ejs = require("ejs");
+const bodyParser = require("body-parser");
+const mongoose = require("mongoose");
+const lodash = require("lodash");
+
+const app = express();
+app.use(bodyParser.urlencoded({extended: true}));
+app.use(express.static("public"));
+app.set("view engine", "ejs");
+
+mongoose.connect("mongodb://localhost:27017/listDB", {useUnifiedTopology: true});
+
+const itemsSchema = {
+  name: String
 }
 
-today = new Date();
-currentMonth = today.getMonth();
-currentYear = today.getFullYear();
-selectYear = document.getElementById("year");
-selectMonth = document.getElementById("month");
+const Item = mongoose.model("Item", itemsSchema);
 
+const item1 = new Item({
+  name: "Eating"
+})
+const item2 = new Item({
+  name: "Coding"
+})
+const item3 = new Item({
+  name: "Playing"
+})
 
-createYear = generate_year_range(1970, 2050);
-/** or
- * createYear = generate_year_range( 1970, currentYear );
- */
+const defaultItems = [item1, item2, item3];
 
-document.getElementById("year").innerHTML = createYear;
-
-var calendar = document.getElementById("calendar");
-var lang = calendar.getAttribute('data-lang');
-
-var months = "";
-var days = "";
-
-var monthDefault = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-
-var dayDefault = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-if (lang == "en") {
-    months = monthDefault;
-    days = dayDefault;
-} else if (lang == "id") {
-    months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    days = ["Ming", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
-} else if (lang == "fr") {
-    months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-    days = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
-} else {
-    months = monthDefault;
-    days = dayDefault;
+const listsSchema = {
+  name: String,
+  items: [itemsSchema]
 }
+const List = mongoose.model("list", listsSchema);
 
 
-var $dataHead = "<tr>";
-for (dhead in days) {
-    $dataHead += "<th data-days='" + days[dhead] + "'>" + days[dhead] + "</th>";
-}
-$dataHead += "</tr>";
+app.get("/register", function(req, res){
+  res.render("register");
+});
+app.get("/login", function(req, res){
+  res.render("login");
+});
 
-//alert($dataHead);
-document.getElementById("thead-month").innerHTML = $dataHead;
-
-
-monthAndYear = document.getElementById("monthAndYear");
-showCalendar(currentMonth, currentYear);
-
-
-
-function next() {
-    currentYear = (currentMonth === 11) ? currentYear + 1 : currentYear;
-    currentMonth = (currentMonth + 1) % 12;
-    showCalendar(currentMonth, currentYear);
-}
-
-function previous() {
-    currentYear = (currentMonth === 0) ? currentYear - 1 : currentYear;
-    currentMonth = (currentMonth === 0) ? 11 : currentMonth - 1;
-    showCalendar(currentMonth, currentYear);
-}
-
-function jump() {
-    currentYear = parseInt(selectYear.value);
-    currentMonth = parseInt(selectMonth.value);
-    showCalendar(currentMonth, currentYear);
-}
-
-function showCalendar(month, year) {
-
-    var firstDay = ( new Date( year, month ) ).getDay();
-
-    tbl = document.getElementById("calendar-body");
-
-
-    tbl.innerHTML = "";
-
-
-    monthAndYear.innerHTML = months[month] + " " + year;
-    selectYear.value = year;
-    selectMonth.value = month;
-
-    // creating all cells
-    var date = 1;
-    for ( var i = 0; i < 6; i++ ) {
-
-        var row = document.createElement("tr");
-
-
-        for ( var j = 0; j < 7; j++ ) {
-            if ( i === 0 && j < firstDay ) {
-                cell = document.createElement( "td" );
-                cellText = document.createTextNode("");
-                cell.appendChild(cellText);
-                row.appendChild(cell);
-            } else if (date > daysInMonth(month, year)) {
-                break;
-            } else {
-                cell = document.createElement("td");
-                cell.setAttribute("data-date", date);
-                cell.setAttribute("data-month", month + 1);
-                cell.setAttribute("data-year", year);
-                cell.setAttribute("data-month_name", months[month]);
-                cell.className = "date-picker";
-                cell.innerHTML = "<span>" + date + "</span>";
-
-                if ( date === today.getDate() && year === today.getFullYear() && month === today.getMonth() ) {
-                    cell.className = "date-picker selected";
-                }
-                row.appendChild(cell);
-                date++;
-            }
-
-
+app.get("/", function(req, res) {
+  Item.find({},function(err, foundItems){
+    if(foundItems.length === 0){
+      Item.insertMany(defaultItems,function(err){
+        if(err){
+          console.log(err);
+        }else{
+          console.log("Succesfully inserted the items");
         }
-
-        tbl.appendChild(row);
+      })
+      res.redirect("/");
+    }else{
+      res.render("main", {listTitle: "Today", newListItems:foundItems});
     }
+  });
 
-}
+});
 
-function daysInMonth(iMonth, iYear) {
-    return 32 - new Date(iYear, iMonth, 32).getDate();
-}
+app.post("/", function(req, res){
+
+  const itemName = req.body.newItem;
+  const listName = req.body.list;
+  const newItem = new Item({
+    name: itemName
+  });
+  if(listName === "Today"){
+    newItem.save();
+    res.redirect("/");
+  }else{
+    List.findOne({name: listName}, function(err, foundList){
+      foundList.items.push(newItem);
+      foundList.save();
+      res.redirect("/"+ listName);
+    });
+  }
+
+});
+
+app.post("/delete", function(req, res){
+  const checkedItemId = req.body.checkbox;
+  const listName = req.body.listName;
+  if(listName === "Today"){
+    Item.findByIdAndRemove(checkedItemId, function(err){
+      if(!err){
+        console.log("Succesfully deleted checked item.");
+        res.redirect("/");
+      }
+      });
+      }else{
+        List.findOneAndUpdate({name: listName},{$pull: {items: {_id: checkedItemId}}}, function(err, foundList){
+          if(!err){
+            res.redirect("/" + listName);
+          }
+        });
+  }
+
+});
+
+
+app.listen(3000, function(req, res){
+  console.log("Server is running on port 3000");
+})
